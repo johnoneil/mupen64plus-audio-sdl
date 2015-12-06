@@ -528,11 +528,13 @@ EXPORT void CALL AiLenChanged( void )
 	    //if(soundStopTime < context.currentTime + LOOKAHEAD) {
 	    if(Module.audio.soundStopTime < simulatedHWClock + Module.audio.LOOKAHEAD && Module.audio.rightData && Module.audio.rightData.length) {
 	      //console.error('adding buffer at performance time: '+ now.toString() + 'context time: ' + context.currentTime.toString() + ' Sound due to stop at: ' + soundStopTime.toString());
-	      buffer = Module.audio.context.createBuffer(1, Module.audio.SAMPLE_RATE*Module.audio.BUFFER_LENGTH_S, Module.audio.SAMPLE_RATE);
-	      soundData = buffer.getChannelData(0);
-	      for (var i = 0; i < soundData.length; i++) {
+	      buffer = Module.audio.context.createBuffer(2, Module.audio.SAMPLE_RATE*Module.audio.BUFFER_LENGTH_S, Module.audio.SAMPLE_RATE);
+	      soundDataLeft = buffer.getChannelData(0);
+				soundDataRight = buffer.getChannelData(1);
+	      for (var i = 0; i < soundDataLeft.length; i++) {
 	        //soundData[i] = Math.sin(2*Math.PI*i*440/Module.audio.SAMPLE_RATE);
-					soundData[i] = Module.audio.rightData.shift();
+					soundDataLeft[i] = Module.audio.leftData.shift();
+					soundDataRight[i] = Module.audio.rightData.shift();
 	      }
 
 	      bufferSource = Module.audio.context.createBufferSource();
