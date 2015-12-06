@@ -526,7 +526,7 @@ EXPORT void CALL AiLenChanged( void )
 	    var simulatedHWClock = now/1000.0;
 
 	    //if(soundStopTime < context.currentTime + LOOKAHEAD) {
-	    if(Module.audio.soundStopTime < simulatedHWClock + Module.audio.LOOKAHEAD) {
+	    if(Module.audio.soundStopTime < simulatedHWClock + Module.audio.LOOKAHEAD && Module.audio.rightData && Module.audio.rightData.length) {
 	      //console.error('adding buffer at performance time: '+ now.toString() + 'context time: ' + context.currentTime.toString() + ' Sound due to stop at: ' + soundStopTime.toString());
 	      buffer = Module.audio.context.createBuffer(1, Module.audio.SAMPLE_RATE*Module.audio.BUFFER_LENGTH_S, Module.audio.SAMPLE_RATE);
 	      soundData = buffer.getChannelData(0);
@@ -538,6 +538,11 @@ EXPORT void CALL AiLenChanged( void )
 	      bufferSource = Module.audio.context.createBufferSource();
 	      bufferSource.buffer = buffer;
 	      bufferSource.connect(Module.audio.context.destination);
+
+				if(Module.audio.soundStopTime < Module.audio.context.currentTime)
+				{
+					Module.audio.soundStopTime = Module.audio.context.currentTime;
+				}
 
 	      bufferSource.start(Module.audio.soundStopTime);
 	      Module.audio.soundStopTime = Module.audio.soundStopTime + Module.audio.BUFFER_LENGTH_S;
@@ -920,7 +925,8 @@ static void InitializeAudio(int freq)
 			}
 			Module.audio.context = new (window.AudioContext || window.webkitAudioContext)();
 			Module.audio.channels = 2;
-			Module.audio.BUFFER_LENGTH_MS = 15;
+			//Module.audio.BUFFER_LENGTH_MS = 15;
+			Module.audio.BUFFER_LENGTH_MS = 30;
 			Module.audio.BUFFER_LENGTH_S =  Module.audio.BUFFER_LENGTH_MS / 1000.0;
 			Module.audio.LOOKAHEAD = (Module.audio.BUFFER_LENGTH_MS - 1) / 1000.0;
 			//Module.audio.SAMPLE_RATE = 44100;
