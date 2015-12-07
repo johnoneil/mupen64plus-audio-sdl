@@ -509,7 +509,7 @@ EXPORT void CALL AiLenChanged( void )
 			}
 
 			// check for buffer overruns (if we've accumulated more than 1 second of audio data)
-			if(Module.audio.leftData.length > Module.audio.SAMPLE_RATE)
+			if(Module.audio.leftData.length > Module.audio.SAMPLE_RATE * 1.5)
 			{
 				Module.audio.leftData = [];
 				Module.audio.rightData = [];
@@ -529,15 +529,19 @@ EXPORT void CALL AiLenChanged( void )
 				}else{
 					Module.audio.rightData.push(sample);
 				}
-
 			}
+
+			//Module.audio.lastSamplSubmit = now;
+			var delta = now - Module.audio.lastSamplSubmit;
+			//console.error('added ',numSamples,' samples at audio time: ',  Module.audio.context.currentTime ,' with sample rate: ',Module.audio.SAMPLE_RATE,' dt: ',delta,' expect more audio within: ',numSamples/ Module.audio.SAMPLE_RATE);
+			Module.audio.lastSamplSubmit = now;
 
 	    //Schedule a new sound buffer to play if the current buffer end time is due to expire.
 	    //var simulatedHWClock = now;///1000.0;
 
 	    //if(soundStopTime < context.currentTime + LOOKAHEAD) {
 	    if(Module.audio.soundStopTime < now + Module.audio.LOOKAHEAD && Module.audio.rightData && Module.audio.rightData.length) {
-	      //console.error('adding buffer at performance time: '+ now.toString() + 'context time: ' + context.currentTime.toString() + ' Sound due to stop at: ' + soundStopTime.toString());
+	      //console.error('adding buffer at time: ' +  Module.audio.context.currentTime.toString() + ' Sound due to stop at: ' + soundStopTime.toString());
 	      buffer = Module.audio.context.createBuffer(2, Module.audio.SAMPLE_RATE*Module.audio.BUFFER_LENGTH_S, Module.audio.SAMPLE_RATE);
 	      soundDataLeft = buffer.getChannelData(0);
 				soundDataRight = buffer.getChannelData(1);
@@ -594,27 +598,27 @@ EXPORT void CALL AiLenChanged( void )
     if (ExpectedLevel >= PrimaryBufferTarget + OutputFreq / 100)
     {
         unsigned int WaitTime = (ExpectedLevel - PrimaryBufferTarget) * 1000 / OutputFreq;
-        DebugMessage(M64MSG_WARNING, "    AiLenChanged(): Waiting %ims", WaitTime);
+        DebugMessage(M64MSG_VERBOSE, "    AiLenChanged(): Waiting %ims", WaitTime);
         if (l_PausedForSync)
 				{
-						fprintf(stderr, "SDL UNpaused.\n");
+						//fprintf(stderr, "SDL UNpaused.\n");
 						{
-							fprintf(stderr, "SDL UNpaused.\n");
+							//fprintf(stderr, "SDL UNpaused.\n");
             	//SDL_PauseAudio(0);
 						}
 				}
         l_PausedForSync = 0;
-				fprintf(stderr, "SDL suggesting we BLOCK for %d milliseconds...).\n", WaitTime);
+				//fprintf(stderr, "SDL suggesting we BLOCK for %d milliseconds...).\n", WaitTime);
         //SDL_Delay(WaitTime);
     }
     /* Or if the expected level of the primary buffer is less than the secondary buffer size
        (ie, predicting an underflow), then pause the audio to let the emulator catch up to speed */
     else if (ExpectedLevel < SecondaryBufferSize)
     {
-        DebugMessage(M64MSG_WARNING, "    AiLenChanged(): Possible underflow at next audio callback; pausing playback");
+        DebugMessage(M64MSG_VERBOSE, "    AiLenChanged(): Possible underflow at next audio callback; pausing playback");
         if (!l_PausedForSync)
 				{
-					fprintf(stderr, "SDL UNpaused (SHOULD? be pause???).\n");
+					//fprintf(stderr, "SDL UNpaused (SHOULD? be pause???).\n");
         //  SDL_PauseAudio(0);
 				}
         l_PausedForSync = 1;
@@ -624,7 +628,7 @@ EXPORT void CALL AiLenChanged( void )
     {
         if (l_PausedForSync)
 				{
-					fprintf(stderr, "SDL UNpaused.\n");
+					//fprintf(stderr, "SDL UNpaused.\n");
             //SDL_PauseAudio(0);
 				}
         l_PausedForSync = 0;
@@ -765,12 +769,12 @@ static void my_audio_callback(void *userdata, unsigned char *stream, int len)
 {
 	//fprintf(stderr, "%03i: my_audio_callback invoked wanting %d bytes samples \n", SDL_GetTicks() % 1000, len);
 	int now = EM_ASM_INT_V({return performance.now();});
-	fprintf(stderr, "%i: my_audio_callback invoked wanting %d bytes samples \n", 1000, len);
+	//fprintf(stderr, "%i: my_audio_callback invoked wanting %d bytes samples \n", 1000, len);
     int oldsamplerate, newsamplerate;
 
     if (!l_PluginInit)
     {
-        DebugMessage(M64MSG_WARNING, "bailing on my_audio_callback bcz plugin not initted!!!");
+        DebugMessage(M64MSG_VERBOSE, "bailing on my_audio_callback bcz plugin not initted!!!");
         return;
     }
 
@@ -874,8 +878,11 @@ static void InitializeSDL(void)
 
 static void CreatePrimaryBuffer(void)
 {
-    unsigned int newPrimaryBytes = (unsigned int) ((long long) PrimaryBufferSize * GameFreq * speed_factor /
-                                                   (OutputFreq * 100)) * N64_SAMPLE_BYTES;
+    //unsigned int newPrimaryBytes = (unsigned int) ((long long) PrimaryBufferSize * GameFreq * speed_factor /
+    //                                               (OutputFreq * 100)) * N64_SAMPLE_BYTES;
+
+    unsigned int newPrimaryBytes =   44100 * 2 * 10;
+		primaryBufferBytes = newPrimaryBytes;
     if (primaryBuffer == NULL)
     {
         DebugMessage(M64MSG_VERBOSE, "Allocating memory for audio buffer: %i bytes.", newPrimaryBytes);
@@ -938,8 +945,8 @@ static void InitializeAudio(int freq)
 			}
 			Module.audio.context = new (window.AudioContext || window.webkitAudioContext)();
 			Module.audio.channels = 2;
-			//Module.audio.BUFFER_LENGTH_MS = 15;
-			Module.audio.BUFFER_LENGTH_MS = 45;
+			//Module.audio.BUFFER_LENGTH_MS = 45;
+			Module.audio.BUFFER_LENGTH_MS = 100;
 			Module.audio.BUFFER_LENGTH_S =  Module.audio.BUFFER_LENGTH_MS / 1000.0;
 			Module.audio.LOOKAHEAD = (Module.audio.BUFFER_LENGTH_MS - 1) / 1000.0;
 			//Module.audio.SAMPLE_RATE = 44100;
@@ -968,10 +975,10 @@ static void InitializeAudio(int freq)
 
     desired->freq = OutputFreq;
 
-    DebugMessage(M64MSG_WARNING, "Requesting frequency: %iHz.", desired->freq);
+    DebugMessage(M64MSG_VERBOSE, "Requesting frequency: %iHz.", desired->freq);
     /* 16-bit signed audio */
     desired->format=AUDIO_S16SYS;
-    DebugMessage(M64MSG_WARNING, "Requesting format: %i.", desired->format);
+    DebugMessage(M64MSG_VERBOSE, "Requesting format: %i.", desired->format);
     /* Stereo */
     desired->channels=2;
     /* reload these because they gets re-assigned from SDL data below, and InitializeAudio can be called more than once */
@@ -988,7 +995,7 @@ static void InitializeAudio(int freq)
     //if (SDL_OpenAudio(desired, obtained) < 0)
 		if(0)
     {
-        DebugMessage(M64MSG_WARNING, "Couldn't open audio: %s", SDL_GetError());
+        DebugMessage(M64MSG_VERBOSE, "Couldn't open audio: %s", SDL_GetError());
         critical_failure = 1;
         return;
     }
