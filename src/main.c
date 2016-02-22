@@ -906,7 +906,9 @@ static void CreatePrimaryBuffer(void)
 
 static void InitializeAudio(int freq)
 {
-    SDL_AudioSpec *desired, *obtained;
+    SDL_AudioSpec *desired = NULL;
+		SDL_AudioSpec *obtained = NULL;
+		hardware_spec = NULL;
 
     //if(SDL_WasInit(SDL_INIT_AUDIO|SDL_INIT_TIMER) == (SDL_INIT_AUDIO|SDL_INIT_TIMER) )
 		// if(SDL_WasInit(SDL_INIT_AUDIO) == (SDL_INIT_AUDIO) )
@@ -1009,7 +1011,8 @@ static void InitializeAudio(int freq)
     // }
 
     /* desired spec is no longer needed */
-    free(desired);
+		if(desired)
+    	free(desired);
     hardware_spec=obtained;
 
     /* allocate memory for audio buffers */
