@@ -211,7 +211,7 @@ EXPORT m64p_error CALL PluginStartup(m64p_dynlib_handle CoreLibHandle, void *Con
     int ConfigAPIVersion, DebugAPIVersion, VidextAPIVersion, bSaveConfig;
     float fConfigParamsVersion = 0.0f;
 
-#if 1 //EMSCRIPTEN
+#if EMSCRIPTEN
     // Make sure static variables initialized properly.
     /* Read header for type definition */
 
