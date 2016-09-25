@@ -54,8 +54,6 @@
 #include "osal_dynamiclib.h"
 #include "volume.h"
 
-#include "emscripten.h"
-
 /* Default start-time size of primary buffer (in equivalent output samples).
    This is the buffer where audio is loaded after it's extracted from n64's memory.
    This value must be larger than PRIMARY_BUFFER_TARGET */
@@ -490,7 +488,8 @@ EXPORT void CALL AiLenChanged( void )
     //     DebugMessage(M64MSG_VERBOSE, "AiLenChanged(): Audio buffer overflow.");
     // }
 
-		EM_ASM_INT({
+#if EMSCRIPTEN
+    EM_ASM_INT({
 
 			var primaryBuffer = $0|0;
 			var numSamples = $1|0;
@@ -570,6 +569,8 @@ EXPORT void CALL AiLenChanged( void )
 		}
 		,primaryBuffer
 		,LenReg/2);
+
+#endif //EMSCRIPTEN
 
     /* Now we need to handle synchronization, by inserting time delay to keep the emulator running at the correct speed */
     /* Start by calculating the current Primary buffer fullness in terms of output samples */
