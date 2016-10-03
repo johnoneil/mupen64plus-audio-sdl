@@ -69,9 +69,13 @@
 
 /* Size of secondary buffer, in output samples. This is the requested size of SDL's
    hardware buffer, and the size of the mix buffer for doing SDL volume control. The
-   SDL documentation states that this should be a power of two between 512 and 8192. */
-//#define SECONDARY_BUFFER_SIZE 1024
+   SDL documentation states that this should be a power of two between 512 and 8192.
+*/
+#if !(EMSCRIPTEN)
+#define SECONDARY_BUFFER_SIZE 1024
+#else
 #define SECONDARY_BUFFER_SIZE 4096
+#endif
 
 /* This sets default frequency what is used if rom doesn't want to change it.
    Probably only game that needs this is Zelda: Ocarina Of Time Master Quest
@@ -446,16 +450,19 @@ EXPORT void CALL AiLenChanged( void )
     LenReg = *AudioInfo.AI_LEN_REG;
     p = AudioInfo.RDRAM + (*AudioInfo.AI_DRAM_ADDR_REG & 0xFFFFFF);
 
-    //if(buffer_pos > primaryBufferBytes)
-    //{
-        buffer_pos = 0;
-    //}
+#if !(EMSCRIPTEN)
+    if (buffer_pos + LenReg < primaryBufferBytes)
+#else
+		buffer_pos = 0;
 
-    //if (buffer_pos + LenReg < primaryBufferBytes)
+		if(1)
+#endif
     {
         unsigned int i;
 
-        //SDL_LockAudio();
+#if !(EMSCRIPTEN)
+        SDL_LockAudio();
+#endif
         for ( i = 0 ; i < LenReg ; i += 4 )
         {
 
@@ -478,15 +485,17 @@ EXPORT void CALL AiLenChanged( void )
                 primaryBuffer[ buffer_pos + i + 3 ] = p[ i + 3 ];
             }
         }
-
+#if !(EMSCRIPTEN)
+        buffer_pos += i;
+        SDL_UnlockAudio();			
+#else
         buffer_pos += LenReg;
-
-        //SDL_UnlockAudio();
+#endif
     }
-    // else
-    // {
-    //     DebugMessage(M64MSG_VERBOSE, "AiLenChanged(): Audio buffer overflow.");
-    // }
+    else
+    {
+        DebugMessage(M64MSG_WARNING, "AiLenChanged(): Audio buffer overflow.");
+    }
 
 #if EMSCRIPTEN
     EM_ASM_INT({
@@ -577,40 +586,43 @@ EXPORT void CALL AiLenChanged( void )
     CurrLevel = (unsigned int) (((long long) (buffer_pos/N64_SAMPLE_BYTES) * OutputFreq * 100) / (GameFreq * speed_factor));
     /* Next, extrapolate to the buffer level at the expected time of the next audio callback, assuming that the
        buffer is filled at the same rate as the output frequency */
-    //CurrTime = SDL_GetTicks();
+#if !(EMSCRIPTEN)
+    CurrTime = SDL_GetTicks();
+#else
 		CurrTime = EM_ASM_INT_V({return performance.now();});
+#endif
     ExpectedTime = last_callback_ticks + ((1000 * SecondaryBufferSize) / OutputFreq);
     ExpectedLevel = CurrLevel;
     if (CurrTime < ExpectedTime)
 		{
         ExpectedLevel += (ExpectedTime - CurrTime) * OutputFreq / 1000;
 		}
+
+#if _DEBUG
     /* If the expected value of the Primary Buffer Fullness at the time of the next audio callback is more than 10
        milliseconds ahead of our target buffer fullness level, then insert a delay now */
-			//  fprintf(stderr, "%03i New audio bytes: %i  Time to next callback: %i   current time: %i expected time: %i Current/Expected buffer level: %i/%i \n",
-			//  						 CurrTime % 1000,
-			// 						 LenReg,
-			// 						 (int) (ExpectedTime - CurrTime),
-			// 						 									 CurrTime,
-			// 						 ExpectedTime,
-			// 						 CurrLevel,
-			// 						 ExpectedLevel);
+    DebugMessage(M64MSG_VERBOSE, "%03i New audio bytes: %i  Time to next callback: %i  Current/Expected buffer level: %i/%i",
+                 CurrTime % 1000, LenReg, (int) (ExpectedTime - CurrTime), CurrLevel, ExpectedLevel);
+#endif
 
     if (ExpectedLevel >= PrimaryBufferTarget + OutputFreq / 100)
     {
         unsigned int WaitTime = (ExpectedLevel - PrimaryBufferTarget) * 1000 / OutputFreq;
+
+#if _DEBUG
         DebugMessage(M64MSG_VERBOSE, "    AiLenChanged(): Waiting %ims", WaitTime);
+#endif
+
         if (l_PausedForSync)
 				{
-						//fprintf(stderr, "SDL UNpaused.\n");
-						{
-							//fprintf(stderr, "SDL UNpaused.\n");
-            	//SDL_PauseAudio(0);
-						}
+#if !(EMSCRIPTEN)
+          SDL_PauseAudio(0);
+#endif
 				}
         l_PausedForSync = 0;
-				//fprintf(stderr, "SDL suggesting we BLOCK for %d milliseconds...).\n", WaitTime);
-        //SDL_Delay(WaitTime);
+#if !(EMSCRIPTEN)
+        SDL_Delay(WaitTime);
+#endif
     }
     /* Or if the expected level of the primary buffer is less than the secondary buffer size
        (ie, predicting an underflow), then pause the audio to let the emulator catch up to speed */
@@ -619,8 +631,9 @@ EXPORT void CALL AiLenChanged( void )
         DebugMessage(M64MSG_VERBOSE, "    AiLenChanged(): Possible underflow at next audio callback; pausing playback");
         if (!l_PausedForSync)
 				{
-					//fprintf(stderr, "SDL UNpaused (SHOULD? be pause???).\n");
-        //  SDL_PauseAudio(0);
+#if !(EMSCRIPTEN)
+          SDL_PauseAudio(0);
+#endif
 				}
         l_PausedForSync = 1;
     }
@@ -629,8 +642,9 @@ EXPORT void CALL AiLenChanged( void )
     {
         if (l_PausedForSync)
 				{
-					//fprintf(stderr, "SDL UNpaused.\n");
-            //SDL_PauseAudio(0);
+#if !(EMSCRIPTEN)
+          SDL_PauseAudio(0);
+#endif
 				}
         l_PausedForSync = 0;
     }
@@ -676,7 +690,10 @@ static int resample(unsigned char *input, int input_avail, int oldsamplerate, un
             spx_state = speex_resampler_init(2, oldsamplerate, newsamplerate, ResampleQuality,  &error);
             if(spx_state == NULL)
             {
-                //memset(output, 0, output_needed);
+#if !(EMSCRIPTEN)
+                memset(output, 0, output_needed);
+#endif
+
                 return 0;
             }
         }
@@ -686,7 +703,9 @@ static int resample(unsigned char *input, int input_avail, int oldsamplerate, un
 
         if ((error = speex_resampler_process_interleaved_int(spx_state, (const spx_int16_t *)input, &in_len, (spx_int16_t *)output, &out_len)))
         {
-            //memset(output, 0, output_needed);
+#if !(EMSCRIPTEN)
+            memset(output, 0, output_needed);
+#endif
             return input_avail;  // number of bytes consumed
         }
         return in_len * 4;
@@ -768,20 +787,24 @@ static int resample(unsigned char *input, int input_avail, int oldsamplerate, un
 
 static void my_audio_callback(void *userdata, unsigned char *stream, int len)
 {
+
+#if EMSCRIPTEN
 	//fprintf(stderr, "%03i: my_audio_callback invoked wanting %d bytes samples \n", SDL_GetTicks() % 1000, len);
 	int now = EM_ASM_INT_V({return performance.now();});
 	//fprintf(stderr, "%i: my_audio_callback invoked wanting %d bytes samples \n", 1000, len);
+#endif
+
     int oldsamplerate, newsamplerate;
 
     if (!l_PluginInit)
-    {
-        DebugMessage(M64MSG_VERBOSE, "bailing on my_audio_callback bcz plugin not initted!!!");
         return;
-    }
 
     /* mark the time, for synchronization on the input side */
-    //last_callback_ticks = SDL_GetTicks();
+#if !(EMSCRIPTEN)
+    last_callback_ticks = SDL_GetTicks();
+#else
 		last_callback_ticks =  EM_ASM_INT_V({return performance.now();});
+#endif
 
     newsamplerate = OutputFreq * 100 / speed_factor;
     oldsamplerate = GameFreq;
@@ -797,58 +820,32 @@ static void my_audio_callback(void *userdata, unsigned char *stream, int len)
         else
 #endif
         {
-
-            //input_used = resample(primaryBuffer, buffer_pos, oldsamplerate, mixBuffer, len, newsamplerate);
-            //input_used = resample(primaryBuffer, 0, oldsamplerate, mixBuffer, len, newsamplerate);
-
+#if !(EMSCRIPTEN)
+            input_used = resample(primaryBuffer, buffer_pos, oldsamplerate, mixBuffer, len, newsamplerate);
+            memset(stream, 0, len);
+            SDL_MixAudio(stream, mixBuffer, len, VolSDL);
+#else
             memset(stream, 0, len);
 
-            // for(int i = 0; i < len)
-            // {
-            //     fprintf(stderr, "sample: %d,"mixBuffer[i]);
-            // }
-            // fprintf(stderr,"\n");
-
-            // SDL_AudioCVT cvt;
-            // //unsigned char* tmpBuffer = malloc(len);
-            // //memcpy(tmpBuffer, &primaryBuffer[buffer_pos], len);
-            // SDL_BuildAudioCVT(&cvt, AUDIO_S16LSB, 2, GameFreq, AUDIO_F32LSB, 2, OutputFreq);
-            // //SDL_assert(cvt.needed); // obviously, this one is always needed.
-            // cvt.len = len;//1024 * 2 * 4;  // 1024 stereo float32 sample frames.
-            // cvt.buf = SDL_malloc(cvt.len * cvt.len_mult);
-            // memcpy((void*)cvt.buf, (void*)primaryBuffer, len);
-            // // read your float32 data into cvt.buf here.
-            // SDL_ConvertAudio(&cvt);
-
-            // for(int i = 0 ; i < len/sizeof(short int); ++i)
-            // {
-            //     fprintf(stderr, "%d,",((short int*)primaryBuffer)[i] );
-            // }
-            // fprintf(stderr,"\n");
-
-            //DebugMessage(M64MSG_WARNING, ">>>>>>>>>>>>>> FEETING SAMPLES <<<<<<<<<<<<<<< invoked!!!");
-
-            //SDL_MixAudio(stream, (unsigned char*)cvt.buf, len, SDL_MIX_MAXVOLUME);
-
-            // SDL_Free ????
-
             input_used = len;
-
-            //free(flt);
+#endif
         }
         memmove(primaryBuffer, &primaryBuffer[input_used], buffer_pos - input_used);
         buffer_pos -= input_used;
-        //DebugMessage(M64MSG_WARNING, "%03i my_audio_callback: used %i samples",
-        //             last_callback_ticks % 1000, len / SDL_SAMPLE_BYTES);
+        DebugMessage(M64MSG_VERBOSE, "%03i my_audio_callback: used %i samples",
+                     last_callback_ticks % 1000, len / SDL_SAMPLE_BYTES);
     }
     else
     {
         unsigned int SamplesNeeded = (len * oldsamplerate) / (newsamplerate * SDL_SAMPLE_BYTES);
         unsigned int SamplesPresent = buffer_pos / N64_SAMPLE_BYTES;
         underrun_count++;
-        //DebugMessage(M64MSG_WARNING, "%03i Buffer underflow (%i).  %i samples present, %i needed",
-        //             last_callback_ticks % 1000, underrun_count, SamplesPresent, SamplesNeeded);
-        //memset(stream , 0, len);
+        DebugMessage(M64MSG_VERBOSE, "%03i Buffer underflow (%i).  %i samples present, %i needed",
+                     last_callback_ticks % 1000, underrun_count, SamplesPresent, SamplesNeeded);
+
+#if !(EMSCRIPTEN)
+        memset(stream , 0, len);
+#endif
     }
 }
 EXPORT int CALL RomOpen(void)
@@ -865,9 +862,11 @@ static void InitializeSDL(void)
 {
     DebugMessage(M64MSG_INFO, "Initializing SDL audio subsystem...");
 
-    //if(SDL_Init(SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0)
-    //if(SDL_Init(SDL_INIT_AUDIO) < 0)
-		if(0)
+#if !(EMSCRIPTEN)
+    if(SDL_Init(SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0)
+#else
+    if(0)
+#endif
     {
         DebugMessage(M64MSG_ERROR, "Failed to initialize SDL audio subsystem; forcing exit.\n");
         critical_failure = 1;
@@ -879,10 +878,15 @@ static void InitializeSDL(void)
 
 static void CreatePrimaryBuffer(void)
 {
-    //unsigned int newPrimaryBytes = (unsigned int) ((long long) PrimaryBufferSize * GameFreq * speed_factor /
-    //                                               (OutputFreq * 100)) * N64_SAMPLE_BYTES;
-
+#if !(EMSCRIPTEN)
+    unsigned int newPrimaryBytes = (unsigned int) ((long long) PrimaryBufferSize * GameFreq * speed_factor /
+                                                   (OutputFreq * 100)) * N64_SAMPLE_BYTES;
+#else
     unsigned int newPrimaryBytes =   44100 * 2 * 10;
+		primaryBufferBytes = newPrimaryBytes;
+#endif
+
+   
 		primaryBufferBytes = newPrimaryBytes;
     if (primaryBuffer == NULL)
     {
@@ -895,12 +899,20 @@ static void CreatePrimaryBuffer(void)
     {
         unsigned char *newPrimaryBuffer = (unsigned char*) malloc(newPrimaryBytes);
         unsigned char *oldPrimaryBuffer = primaryBuffer;
-        //SDL_LockAudio();
+
+#if !(EMSCRIPTEN)
+        SDL_LockAudio();
+#endif
+
         memcpy(newPrimaryBuffer, oldPrimaryBuffer, primaryBufferBytes);
         memset(newPrimaryBuffer + primaryBufferBytes, 0, newPrimaryBytes - primaryBufferBytes);
         primaryBuffer = newPrimaryBuffer;
         primaryBufferBytes = newPrimaryBytes;
-        //SDL_UnlockAudio();
+
+#if !(EMSCRIPTEN)
+        SDL_UnlockAudio();
+#endif
+
         free(oldPrimaryBuffer);
     }
 }
@@ -908,8 +920,10 @@ static void CreatePrimaryBuffer(void)
 static void InitializeAudio(int freq)
 {
     SDL_AudioSpec *desired = NULL;
-		SDL_AudioSpec *obtained = NULL;
-		hardware_spec = NULL;
+    SDL_AudioSpec *obtained = NULL;
+    hardware_spec = NULL;
+
+#if EMSCRIPTEN
 
     //if(SDL_WasInit(SDL_INIT_AUDIO|SDL_INIT_TIMER) == (SDL_INIT_AUDIO|SDL_INIT_TIMER) )
 		// if(SDL_WasInit(SDL_INIT_AUDIO) == (SDL_INIT_AUDIO) )
@@ -962,6 +976,27 @@ static void InitializeAudio(int freq)
 		},
 		freq);
 
+#else // EMSCRIPTEN
+
+
+
+
+    if(SDL_WasInit(SDL_INIT_AUDIO|SDL_INIT_TIMER) == (SDL_INIT_AUDIO|SDL_INIT_TIMER) ) 
+    {
+        DebugMessage(M64MSG_VERBOSE, "InitializeAudio(): SDL Audio sub-system already initialized.");
+        SDL_PauseAudio(1);
+        SDL_CloseAudio();
+    }
+    else 
+    {
+        DebugMessage(M64MSG_VERBOSE, "InitializeAudio(): Initializing SDL Audio");
+        DebugMessage(M64MSG_VERBOSE, "Primary buffer: %i output samples.", PrimaryBufferSize);
+        DebugMessage(M64MSG_VERBOSE, "Primary target fullness: %i output samples.", PrimaryBufferTarget);
+        DebugMessage(M64MSG_VERBOSE, "Secondary buffer: %i output samples.", SecondaryBufferSize);
+        InitializeSDL();
+    }
+
+#endif // EMSCRIPTEN
 
     if (critical_failure == 1)
         return;
@@ -995,25 +1030,27 @@ static void InitializeAudio(int freq)
 
     /* Open the audio device */
     l_PausedForSync = 1;
-    //if (SDL_OpenAudio(desired, obtained) < 0)
-		if(0)
+
+#if !(EMSCRIPTEN)
+    if (SDL_OpenAudio(desired, obtained) < 0)
     {
-        DebugMessage(M64MSG_VERBOSE, "Couldn't open audio: %s", SDL_GetError());
+        DebugMessage(M64MSG_ERROR, "Couldn't open audio: %s", SDL_GetError());
         critical_failure = 1;
         return;
     }
-    // if (desired->format != obtained->format)
-    // {
-    //     DebugMessage(M64MSG_WARNING, "Obtained audio format differs from requested.");
-    // }
-    // if (desired->freq != obtained->freq)
-    // {
-    //     DebugMessage(M64MSG_WARNING, "Obtained frequency differs from requested.");
-    // }
+    if (desired->format != obtained->format)
+    {
+        DebugMessage(M64MSG_WARNING, "Obtained audio format differs from requested.");
+    }
+    if (desired->freq != obtained->freq)
+    {
+        DebugMessage(M64MSG_WARNING, "Obtained frequency differs from requested.");
+    }
+#endif // EMSCRIPTEN
 
     /* desired spec is no longer needed */
-		if(desired)
-    	free(desired);
+    if(desired)
+      free(desired);
     hardware_spec=obtained;
 
     /* allocate memory for audio buffers */
@@ -1031,15 +1068,17 @@ static void InitializeAudio(int freq)
     mixBuffer = (unsigned char*) malloc(SecondaryBufferSize * SDL_SAMPLE_BYTES);
 
     /* preset the last callback time */
-    //if (last_callback_ticks == 0)
+#if !(EMSCRIPTEN)
+    if (last_callback_ticks == 0)
+#endif
         last_callback_ticks = SDL_GetTicks();
 
-    DebugMessage(M64MSG_WARNING, "Frequency: %i", hardware_spec->freq);
-    DebugMessage(M64MSG_WARNING, "Format: %i", hardware_spec->format);
-    DebugMessage(M64MSG_WARNING, "Channels: %i", hardware_spec->channels);
-    DebugMessage(M64MSG_WARNING, "Silence: %i", hardware_spec->silence);
-    DebugMessage(M64MSG_WARNING, "Samples: %i", hardware_spec->samples);
-    DebugMessage(M64MSG_WARNING, "Size: %i", hardware_spec->size);
+    DebugMessage(M64MSG_VERBOSE, "Frequency: %i", hardware_spec->freq);
+    DebugMessage(M64MSG_VERBOSE, "Format: %i", hardware_spec->format);
+    DebugMessage(M64MSG_VERBOSE, "Channels: %i", hardware_spec->channels);
+    DebugMessage(M64MSG_VERBOSE, "Silence: %i", hardware_spec->silence);
+    DebugMessage(M64MSG_VERBOSE, "Samples: %i", hardware_spec->samples);
+    DebugMessage(M64MSG_VERBOSE, "Size: %i", hardware_spec->size);
 
     /* set playback volume */
 #if defined(HAS_OSS_SUPPORT)
@@ -1061,10 +1100,12 @@ EXPORT void CALL RomClosed( void )
    if (critical_failure == 1)
        return;
     DebugMessage(M64MSG_VERBOSE, "Cleaning up SDL sound plugin...");
-
+    
+#if !(EMSCRIPTEN)
     // Shut down SDL Audio output
-    //SDL_PauseAudio(1);
-    //SDL_CloseAudio();
+    SDL_PauseAudio(1);
+    SDL_CloseAudio();
+#endif
 
     // Delete the buffer, as we are done producing sound
     if (primaryBuffer != NULL)
@@ -1083,9 +1124,12 @@ EXPORT void CALL RomClosed( void )
     if(hardware_spec != NULL) free(hardware_spec);
     hardware_spec = NULL;
 
+#if !(EMSCRIPTEN)
     // Shutdown the respective subsystems
-    //if(SDL_WasInit(SDL_INIT_AUDIO) != 0) SDL_QuitSubSystem(SDL_INIT_AUDIO);
-    //if(SDL_WasInit(SDL_INIT_TIMER) != 0) SDL_QuitSubSystem(SDL_INIT_TIMER);
+    if(SDL_WasInit(SDL_INIT_AUDIO) != 0) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    if(SDL_WasInit(SDL_INIT_TIMER) != 0) SDL_QuitSubSystem(SDL_INIT_TIMER);
+#endif
+
 }
 
 EXPORT void CALL ProcessAList(void)
@@ -1261,7 +1305,7 @@ EXPORT void CALL VolumeSetLevel(int level)
     //if muted, unmute first
     VolIsMuted = 0;
 
-    // adjust volume
+    // adjust volume 
     VolPercent = level;
     if (VolPercent < 0)
         VolPercent = 0;
@@ -1286,3 +1330,4 @@ EXPORT const char * CALL VolumeGetString(void)
 
     return VolumeString;
 }
+
